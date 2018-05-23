@@ -1,0 +1,66 @@
+---
+title: "NF1708"
+author: "Zach Proux"
+date: "May 23, 2018"
+output: html_document
+---
+
+```{r}
+# Read in data
+NF = read.csv('./Data/NF1708_Draft.csv')
+NF = as.data.frame(NF)
+# Subset to keep relevant columns
+keeps = c("SampleID", "ImageName", "LatitudeDD", "LongitudeDD", "DepthInMeters", 
+          "SurveyID", "Locality", "ScientificName", "IndividualCount")
+NF = subset(NF, select = keeps)
+```
+
+```{r}
+# Get list of unique taxa
+unique(NF$ScientificName)
+# Create dataframes for each taxa
+Acan = NF[NF$ScientificName == "Acanthogorgia sp.",]
+Anth = NF[NF$ScientificName == "Anthomastus sp.",]
+Anti = NF[NF$ScientificName == "Antipatharia",]
+Aqua = NF[NF$ScientificName == "Aquaumbridae",]
+BAlc = NF[NF$ScientificName == "Bathyalcyon sp.",]
+BPat = NF[NF$ScientificName == "Bathypathes sp.",]
+Chry = NF[NF$ScientificName == "Chrysogorgia sp.",]
+Gorg = NF[NF$ScientificName == "Gorgonacea",]
+Isid = NF[NF$ScientificName == "Isididae",]
+Leio = NF[NF$ScientificName == "Leiopathes glaberrima",]
+Loph = NF[NF$ScientificName == "Lophelia pertusa",]
+Muri = NF[NF$ScientificName == "Muriceides sp.",]
+Para = NF[NF$ScientificName == "Paramuricea sp.",]
+Penn = NF[NF$ScientificName == "Pennatulacea",]
+Plum = NF[NF$ScientificName == "Plumarella sp.",]
+Pori = NF[NF$ScientificName == "Porifera",]
+Stic = NF[NF$ScientificName == "Stichopathes sp.",]
+Stol = NF[NF$ScientificName == "Stolonifera",]
+Styl = NF[NF$ScientificName == "Stylasteridae",]
+Ukno = NF[NF$ScientificName == "Unknown",]
+```
+
+```{r}
+# Calculate total counts
+sum(Acan$IndividualCount)
+sum(Anth$IndividualCount)
+sum(Anti$IndividualCount)
+sum(Aqua$IndividualCount)
+sum(BAlc$IndividualCount)
+sum(BPat$IndividualCount)
+sum(Chry$IndividualCount)
+sum(Gorg$IndividualCount)
+sum(Isid$IndividualCount)
+sum(Leio$IndividualCount)
+sum(Muri$IndividualCount)
+sum(Para$IndividualCount)
+sum(Penn$IndividualCount)
+sum(Plum$IndividualCount)
+sum(Pori$IndividualCount)
+sum(Stic$IndividualCount)
+sum(Stol$IndividualCount)
+sum(Styl$IndividualCount)
+sum(Ukno$IndividualCount)
+```
+

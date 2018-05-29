@@ -64,3 +64,179 @@ sum(Styl$IndividualCount)
 sum(Ukno$IndividualCount)
 ```
 
+```{r}
+# Load necessary packages
+library(raster)
+library(rgdal)
+library(sp)
+```
+
+```{r}
+# Import coral presence/absence data and make it a data.frame
+coral = read.csv("../Data/PA_NF1708.csv")
+coral = data.frame(coral)
+```
+
+```{r}
+# Reproject lat_long to WGS 1984 World Mercator to match rasters
+lon = coral$LongitudeDD
+lat = coral$LatitudeDD
+xy = SpatialPoints(cbind(lon, lat), proj4string=CRS("+proj=longlat"))
+xy.UTM = spTransform(xy, CRS("+init=epsg:32616"))
+UTM.latlon = as.data.frame(xy.UTM)
+```
+
+```{r}
+# Import raster data 
+aspect = raster("../Data/Clip_Aspect1.tif")
+slope = raster("../Data/Clip_Slope1.tif")
+depth = raster("../Data/Clip_Depth1.tif")
+intensity = raster("../Data/Clip_Intensity1.tif")
+plot(intensity)
+plot(aspect)
+plot(depth)
+plot(slope)
+```
+
+```{r}
+# Group files for stacking
+files = c("../Data/Clip_Aspect1.tif", "../Data/Clip_Slope1.tif", "../Data/Clip_Depth1.tif", "../Data/Clip_Intensity1.tif")
+```
+
+```{r}
+# Stack the raster data
+RaStack = stack(files, RAT = TRUE)
+```
+
+```{r}
+# Extract environmental variables for each coordinate
+EnVar = extract(RaStack, xy.UTM)
+EnVar.df = as.data.frame(EnVar)
+# Bind environmental variables to their respective coral presence/absence observations
+ModVar = cbind(coral, EnVar.df, UTM.latlon)
+# Eliminate observations with no environmental data
+work = subset(ModVar, Locality != "North Wall")
+work
+write.csv(work, 'work.csv')
+```
+
+```{r}
+# Use environmental variables as inputs in a binomial logistic regression
+mod1 = glm(work$Presence ~ work$Clip_Depth1 + work$Clip_Slope1 + work$Clip_Aspect1
+           + work$Clip_Intensity1 + work$lon + work$lat, family = "binomial")
+summary(mod1)
+# AIC = 725.18
+# Only Aspect was significant
+# Considering longitude and depth are related as you move westward from the coast of West Florida, I chose to only use depth because it may also be indicative of other water quality properties or physical parameters.
+```
+
+```{r}
+# Narrow down the number of independent variables based on significance
+mod2 = glm(work$Presence ~ work$Clip_Slope1 + work$Clip_Aspect1
+           + work$Clip_Intensity1 + work$Clip_Depth1 + work$lat, family = "binomial")
+summary(mod2)
+# AIC = 725.44
+# Depth and Aspect were significant.  Slope and intensity were trending.
+# Latitude was not significant.
+```
+
+```{r}
+mod3 = glm(Presence ~ Clip_Slope1 + Clip_Aspect1 + Clip_Intensity1,
+           data = work, family = "binomial")
+summary(mod3)
+# AIC = 723.59
+# All variables significant except intensity
+```
+
+```{r}
+# Check residuals
+plot(mod3)
+# Difficult to interpret some of these plots, but there appears to be two distinct portions of the model.  The residuals don't appear to be normally distributed.
+# Calculate R-squared
+R2logit = function(mod3){
+    R2 = 1-(mod3$deviance/mod3$null.deviance)
+    return(R2)
+    }
+R2logit(mod3)
+```
+
+```{r}
+mod4 = glm(work$Presence ~ work$Clip_Slope1 + work$Clip_Aspect1 + work$Clip_Intensity1,
+           family = "binomial")
+summary(mod4)
+# AIC = 724.27
+# Performed slightly worse than mod3 so I left intensity in.
+# Mod3 is the winner
+R2logit(mod4)
+```
+
+```{r}
+# Cut data frame to just the variables I want
+work.cut = subset(work, select = c(Clip_Aspect1, Clip_Slope1, Clip_Depth1, 
+                                   Clip_Intensity1, Presence))
+```
+
+```{r}
+# Cross-validate
+# Split the dataframe into two randomly sorted data frames 
+allrows = 1:nrow(work.cut)
+trainrows = sample(allrows, replace = F, size = 0.5*length(allrows))
+testrows = allrows[-trainrows]
+train = work.cut[trainrows,]
+test = work.cut[testrows,]
+```
+
+```{r}
+# Create models from training dataframe
+train.mod = glm(Presence ~ Clip_Aspect1 + Clip_Slope1 + Clip_Intensity1,
+                data = train, family = "binomial")
+summary(train.mod)
+R2logit(train.mod)
+# R2 = 0.016
+# AIC = 370.7 
+# Predict response 0-1 based on test data frame
+pre.test = predict.glm(train.mod, test, type = "response")
+```
+
+```{r}
+# Create model from testing dataframe
+test.mod = glm(Presence ~ Clip_Aspect1 + Clip_Slope1 + Clip_Intensity1,
+                data = test, family = "binomial")
+summary(test.mod)
+R2logit(test.mod)
+# R2 = 0.0119
+# AIC = 2359.7
+# Predict response 0-1 based on train data frame
+pre.train = predict.glm(test.mod, train, type = "response")
+```
+
+Overall, the models did well acccording to RMSE.  One potential problem is the maximum probability in either model was only 0.19 which means they basically predict absence everywhere.  So while they may have performed well, it could just be due to the fact the number of absence observations is much greater than the number of presence observations.  More data may increase the predictive power.
+
+```{r}
+# Compare the predictive values to the observed values graphically
+mod.perf = as.data.frame(cbind(test$Presence, pre.train))
+ones = mod.perf[mod.perf$V1 == 1,]
+zeros = mod.perf[mod.perf$V1 == 0,]
+boxplot(mod.perf$pre.train ~ mod.perf$V1, ylab = "Predicted Probability of Cnidarian Occurence", 
+        xlab = "Observed Presence or Absence")
+t.test(mod.perf$pre.train, mod.perf$V1)
+# P = 0.99
+# Almost no difference whatsoever between the predicted values for presence observations and absence observations.
+```
+
+```{r}
+# Produce predictive values for each 10m pixel
+mod3.ras = predict(RaStack, mod3)
+# Transform logit scale to probabilities
+logit2prob = function(mod3.ras){
+  odds = exp(mod3.ras)
+  prob = odds / (1 + odds)
+  return(prob)
+}
+bc.prob = logit2prob(mod3.ras)
+plot(bc.prob, xlab = "Longitude (m)", ylab = "Latitude (m)")
+plot(mod3.ras, work.cut$Clip_Intensity1)
+# May be easier to plot this prediction raster in ArcMap to get figures.
+# Save raster in format that's compatible with ArcGIS to stage maps for presentation
+writeRaster(bc.prob, "Anti.Prob", format = "GTiff", overwrite = TRUE)
+```

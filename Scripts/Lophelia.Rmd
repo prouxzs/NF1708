@@ -1,0 +1,58 @@
+---
+title: "Lophelia GLM"
+author: "Zach Proux"
+date: "May 29, 2018"
+output: html_document
+---
+```{r}
+# Load necessary packages
+library(raster)
+library(rgdal)
+library(sp)
+```
+
+```{r}
+# Import coral presence/absence data and make it a data.frame
+coral = read.csv("./Data/Lophelia.csv")
+coral = data.frame(coral)
+
+```
+
+```{r}
+# Reproject lat_long to WGS 1984 World Mercator to match rasters
+lon = coral$LongitudeDD
+lat = coral$LatitudeDD
+xy = SpatialPoints(cbind(lon, lat), proj4string=CRS("+proj=longlat"))
+xy.UTM = spTransform(xy, CRS("+init=epsg:32616"))
+UTM.latlon = as.data.frame(xy.UTM)
+```
+
+```{r}
+# Import raster data 
+aspect = raster("./Data/Clip_Aspect1.tif")
+slope = raster("./Data/Clip_Slope1.tif")
+depth = raster("./Data/Clip_Depth1.tif")
+intensity = raster("./Data/Clip_Intensity1.tif")
+```
+
+```{r}
+# Group files for stacking
+files = c("./Data/Clip_Aspect1.tif", "./Data/Clip_Slope1.tif", "./Data/Clip_Depth1.tif", "./Data/Clip_Intensity1.tif")
+```
+
+```{r}
+# Stack the raster data
+RaStack = stack(files, RAT = TRUE)
+```
+
+```{r}
+# Extract environmental variables for each coordinate
+EnVar = extract(RaStack, xy.UTM)
+EnVar.df = as.data.frame(EnVar)
+# Bind environmental variables to their respective coral presence/absence observations
+ModVar = cbind(coral, EnVar.df, UTM.latlon)
+# Eliminate observations with no environmental data
+work = subset(ModVar, Locality != "North Wall")
+work
+write.csv(work, 'work.csv')
+```
